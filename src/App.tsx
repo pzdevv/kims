@@ -7,7 +7,6 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import LoginPage from "@/pages/auth/LoginPage";
-import SignupPage from "@/pages/auth/SignupPage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import InventoryListPage from "@/pages/inventory/InventoryListPage";
 import AddItemPage from "@/pages/inventory/AddItemPage";
@@ -31,8 +30,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth/login" element={<LoginPage />} />
-            <Route path="/auth/signup" element={<SignupPage />} />
-            
+
+
             <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/inventory" element={<InventoryListPage />} />

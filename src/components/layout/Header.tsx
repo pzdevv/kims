@@ -1,4 +1,5 @@
 import { Bell, Search, Menu } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
@@ -73,6 +74,9 @@ export function Header({ onMenuClick }: HeaderProps) {
               </div>
             </div>
           )}
+
+          {/* Theme Toggle */}
+          <ThemeToggle />
 
           {/* Notifications */}
           <Button variant="ghost" size="icon" className="relative">

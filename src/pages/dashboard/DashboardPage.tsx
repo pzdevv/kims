@@ -22,10 +22,10 @@ const stats = {
 };
 
 const categoryData = [
-  { name: 'Electronics', count: 342, color: 'hsl(93, 54%, 51%)' },
-  { name: 'Furniture', count: 256, color: 'hsl(199, 89%, 48%)' },
-  { name: 'Lab Equipment', count: 198, color: 'hsl(45, 93%, 47%)' },
-  { name: 'Books', count: 451, color: 'hsl(280, 65%, 60%)' },
+  { name: 'Electronics', count: 342, color: '#0D68B1' },  // Kavya Blue
+  { name: 'Furniture', count: 256, color: '#4AAC48' },    // Kavya Green
+  { name: 'Lab Equipment', count: 198, color: '#F8A124' }, // Kavya Orange
+  { name: 'Books', count: 451, color: '#E74133' },        // Kavya Red
 ];
 
 const stockStatusData = [
@@ -209,7 +209,7 @@ export default function DashboardPage() {
                   <XAxis type="number" hide />
                   <YAxis type="category" dataKey="status" width={80} tick={{ fontSize: 12 }} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="hsl(93, 54%, 51%)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="count" fill="#76C044" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -235,15 +235,14 @@ export default function DashboardPage() {
               {recentActivity.map((activity) => (
                 <div key={activity.id} className="flex items-center gap-4">
                   <div
-                    className={`h-2 w-2 rounded-full ${
-                      activity.action === 'Issued'
-                        ? 'bg-warning'
-                        : activity.action === 'Returned'
+                    className={`h-2 w-2 rounded-full ${activity.action === 'Issued'
+                      ? 'bg-warning'
+                      : activity.action === 'Returned'
                         ? 'bg-success'
                         : activity.action === 'Maintenance'
-                        ? 'bg-info'
-                        : 'bg-primary'
-                    }`}
+                          ? 'bg-info'
+                          : 'bg-primary'
+                      }`}
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">

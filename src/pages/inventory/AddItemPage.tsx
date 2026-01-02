@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { useInventory } from '@/hooks/useInventory';
 
 const itemSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(200, 'Name is too long'),
@@ -26,9 +26,10 @@ const itemSchema = z.object({
   area_id: z.string().min(1, 'Please select an area'),
   quantity: z.coerce.number().min(0, 'Quantity must be 0 or more'),
   unit_price: z.coerce.number().min(0, 'Price must be 0 or more'),
-  location: z.string().min(1, 'Location is required').max(100, 'Location is too long'),
-  condition: z.enum(['new', 'good', 'fair', 'poor']),
+  location: z.string().max(100, 'Location is too long').optional(),
+  condition: z.enum(['new', 'good', 'fair', 'poor']).optional(),
   manufacturer: z.string().max(100, 'Manufacturer name is too long').optional(),
+  serial_number: z.string().max(100, 'Serial Number is too long').optional(),
   purchase_date: z.string().optional(),
   warranty_expiry: z.string().optional(),
   min_stock_level: z.coerce.number().min(0, 'Must be 0 or more').default(5),
@@ -37,37 +38,25 @@ const itemSchema = z.object({
 
 type ItemFormValues = z.infer<typeof itemSchema>;
 
-// Demo data
-const categories = [
-  { id: '1', name: 'Electronics' },
-  { id: '2', name: 'Lab Equipment' },
-  { id: '3', name: 'Furniture' },
-  { id: '4', name: 'Sports Equipment' },
-  { id: '5', name: 'Books & Library' },
-  { id: '6', name: 'Stationery' },
-];
-
-const areas = [
-  { id: '1', name: 'Physics Lab' },
-  { id: '2', name: 'Chemistry Lab' },
-  { id: '3', name: 'Biology Lab' },
-  { id: '4', name: 'Computer Lab' },
-  { id: '5', name: 'Library' },
-  { id: '6', name: 'Sports Room' },
-  { id: '7', name: 'Admin Office' },
-  { id: '8', name: 'Storeroom' },
-];
-
 export default function AddItemPage() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { userAreas, hasRole } = useAuth();
+  const {
+    categories,
+    areas,
+    fetchCategories,
+    fetchAreas,
+    addItem,
+    uploadImage,
+    loading: inventoryLoading
+  } = useInventory();
 
-  const availableAreas = hasRole('admin') ? areas : areas.filter(a => 
-    userAreas.some(ua => ua.id === a.id)
-  );
+  useEffect(() => {
+    fetchCategories();
+    fetchAreas();
+  }, []);
 
   const {
     register,
@@ -88,6 +77,7 @@ export default function AddItemPage() {
       condition: 'new',
       manufacturer: '',
       min_stock_level: 5,
+      serial_number: '',
       notes: '',
     },
   });
@@ -103,6 +93,7 @@ export default function AddItemPage() {
         });
         return;
       }
+      setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -112,24 +103,41 @@ export default function AddItemPage() {
   };
 
   const onSubmit = async (data: ItemFormValues) => {
-    setIsLoading(true);
     try {
-      // Demo: simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      toast({
-        title: 'Item Added',
-        description: `${data.name} has been added to inventory.`,
-      });
-      navigate('/inventory');
+      let imageUrl = null;
+      if (imageFile) {
+        imageUrl = await uploadImage(imageFile);
+        if (!imageUrl) return; // Error handled in uploadImage
+      }
+
+      const newItem = {
+        name: data.name,
+        description: data.description || null,
+        category_id: data.category_id,
+        area_id: data.area_id,
+        quantity: data.quantity,
+        unit_price: data.unit_price,
+        location: data.location || null,
+        condition: data.condition || 'good',
+        manufacturer: data.manufacturer || null,
+        serial_number: data.serial_number || null,
+        // purchase_date: data.purchase_date || null, // Supabase expects YYYY-MM-DD or null
+        // warranty_expiry: data.warranty_expiry || null,
+        min_stock_level: data.min_stock_level,
+        image_url: imageUrl,
+        status: 'available' as const,
+        // We need to handle optional dates carefully. Empty string is not valid date.
+        purchase_date: data.purchase_date ? data.purchase_date : null,
+        warranty_expiry: data.warranty_expiry ? data.warranty_expiry : null,
+      };
+
+      const result = await addItem(newItem);
+
+      if (result) {
+        navigate('/inventory');
+      }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to add item. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+      console.error("Form submission error", error);
     }
   };
 
@@ -203,7 +211,7 @@ export default function AddItemPage() {
                       <SelectValue placeholder="Select area" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableAreas.map((area) => (
+                      {areas.map((area) => (
                         <SelectItem key={area.id} value={area.id}>
                           {area.name}
                         </SelectItem>
@@ -248,7 +256,10 @@ export default function AddItemPage() {
                       variant="destructive"
                       size="icon"
                       className="absolute top-2 right-2 h-8 w-8"
-                      onClick={() => setImagePreview(null)}
+                      onClick={() => {
+                        setImagePreview(null);
+                        setImageFile(null);
+                      }}
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -314,16 +325,12 @@ export default function AddItemPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="location">Location *</Label>
+                <Label htmlFor="location">Location</Label>
                 <Input
                   id="location"
-                  placeholder="e.g., Rack A-1, Cabinet B-3"
+                  placeholder="e.g., Rack A-1"
                   {...register('location')}
-                  className={errors.location ? 'border-destructive' : ''}
                 />
-                {errors.location && (
-                  <p className="text-sm text-destructive">{errors.location.message}</p>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -373,6 +380,15 @@ export default function AddItemPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="purchase_date">Purchase Date</Label>
+                  <Input
+                    id="purchase_date"
+                    type="date"
+                    {...register('purchase_date')}
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="warranty_expiry">Warranty Expiry</Label>
                   <Input
                     id="warranty_expiry"
@@ -380,6 +396,15 @@ export default function AddItemPage() {
                     {...register('warranty_expiry')}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="serial_number">Serial Number</Label>
+                <Input
+                  id="serial_number"
+                  placeholder="e.g., SN-12345678"
+                  {...register('serial_number')}
+                />
               </div>
 
               <div className="space-y-2">
@@ -400,14 +425,14 @@ export default function AddItemPage() {
           <Button type="button" variant="outline" asChild>
             <Link to="/inventory">Cancel</Link>
           </Button>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? (
+          <Button type="submit" disabled={inventoryLoading}>
+            {inventoryLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Adding...
+                Saving...
               </>
             ) : (
-              'Add Item'
+              'Save Item'
             )}
           </Button>
         </div>

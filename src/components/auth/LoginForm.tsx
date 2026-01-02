@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, LogIn, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { KAVYA_EMAIL_DOMAIN } from '@/types/auth';
+import { isValidKavyaEmail } from '@/types/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,8 +18,8 @@ const loginSchema = z.object({
     .min(1, 'Email is required')
     .email('Please enter a valid email')
     .refine(
-      (email) => email.toLowerCase().endsWith(KAVYA_EMAIL_DOMAIN),
-      `Only ${KAVYA_EMAIL_DOMAIN} emails are allowed`
+      (email) => isValidKavyaEmail(email),
+      'Only @kavyaschool.edu.np emails are allowed'
     ),
   password: z.string().min(1, 'Password is required'),
   rememberMe: z.boolean().default(false),
@@ -78,7 +78,7 @@ export function LoginForm() {
         <Input
           id="email"
           type="email"
-          placeholder={`yourname${KAVYA_EMAIL_DOMAIN}`}
+          placeholder="yourname@kavyaschool.edu.np"
           {...register('email')}
           className={errors.email ? 'border-destructive' : ''}
           disabled={isLoading}
@@ -146,22 +146,8 @@ export function LoginForm() {
         )}
       </Button>
 
-      <p className="text-center text-sm text-muted-foreground">
-        Don't have an account?{' '}
-        <Link to="/auth/signup" className="text-primary hover:underline font-medium">
-          Sign up
-        </Link>
-      </p>
 
-      {/* Demo credentials hint */}
-      <div className="mt-6 p-4 bg-muted rounded-lg">
-        <p className="text-sm font-medium text-muted-foreground mb-2">Demo Credentials:</p>
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <p><strong>Admin:</strong> admin@kavyaschool.edu.np / admin123</p>
-          <p><strong>Manager:</strong> manager@kavyaschool.edu.np / manager123</p>
-          <p><strong>Staff:</strong> staff@kavyaschool.edu.np / staff123</p>
-        </div>
-      </div>
+
     </form>
   );
 }

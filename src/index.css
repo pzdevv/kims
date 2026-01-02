@@ -51,13 +51,14 @@ All colors MUST be HSL.
     --radius: 0.5rem;
 
     /* Sidebar - matching Kavya theme */
-    --sidebar-background: 215 25% 15%;
-    --sidebar-foreground: 210 20% 95%;
+    /* Sidebar - Light Mode */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 215 25% 15%;
     --sidebar-primary: 93 54% 51%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 215 20% 22%;
-    --sidebar-accent-foreground: 210 20% 95%;
-    --sidebar-border: 215 20% 25%;
+    --sidebar-accent: 215 20% 96%;
+    --sidebar-accent-foreground: 215 25% 15%;
+    --sidebar-border: 215 20% 92%;
     --sidebar-ring: 93 54% 51%;
   }
 

@@ -1,136 +1,246 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { AuthContextType, UserProfile, UserRole, Area } from '@/types/auth';
+import { supabase } from '@/lib/supabase';
+import type { Profile, Area, UserRole } from '@/types/database';
+import type { User, Session } from '@supabase/supabase-js';
+import { useToast } from '@/hooks/use-toast';
+
+export interface AuthContextType {
+  user: Profile | null;
+  session: Session | null;
+  userAreas: Area[];
+  isLoading: boolean;
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, name: string) => Promise<{ error: string | null }>;
+  signOut: () => Promise<void>;
+  hasRole: (role: UserRole | UserRole[]) => boolean;
+  hasAreaAccess: (areaId: string) => boolean;
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo users for testing (will be replaced with Supabase auth)
-const DEMO_USERS: (UserProfile & { password: string })[] = [
-  {
-    id: '1',
-    email: 'admin@kavyaschool.edu.np',
-    password: 'admin123',
-    name: 'Admin User',
-    role: 'admin',
-    department: 'Administration',
-    created_at: new Date().toISOString(),
-    is_active: true,
-  },
-  {
-    id: '2',
-    email: 'manager@kavyaschool.edu.np',
-    password: 'manager123',
-    name: 'Manager User',
-    role: 'manager',
-    department: 'Science Department',
-    created_at: new Date().toISOString(),
-    is_active: true,
-  },
-  {
-    id: '3',
-    email: 'staff@kavyaschool.edu.np',
-    password: 'staff123',
-    name: 'Staff User',
-    role: 'staff',
-    department: 'Physics Lab',
-    created_at: new Date().toISOString(),
-    is_active: true,
-  },
-];
-
-const DEMO_AREAS: Area[] = [
-  { id: '1', name: 'Physics Lab', description: 'Physics laboratory equipment', created_at: new Date().toISOString() },
-  { id: '2', name: 'Chemistry Lab', description: 'Chemistry laboratory equipment', created_at: new Date().toISOString() },
-  { id: '3', name: 'Biology Lab', description: 'Biology laboratory equipment', created_at: new Date().toISOString() },
-  { id: '4', name: 'Computer Lab', description: 'Computer and IT equipment', created_at: new Date().toISOString() },
-  { id: '5', name: 'Library', description: 'Books and reading materials', created_at: new Date().toISOString() },
-  { id: '6', name: 'Sports Room', description: 'Sports equipment and gear', created_at: new Date().toISOString() },
-  { id: '7', name: 'Admin Office', description: 'Office supplies and equipment', created_at: new Date().toISOString() },
-  { id: '8', name: 'Storeroom', description: 'General storage', created_at: new Date().toISOString() },
-];
-
-// Demo user-area assignments
-const DEMO_USER_AREAS: Record<string, string[]> = {
-  '1': ['1', '2', '3', '4', '5', '6', '7', '8'], // Admin has all areas
-  '2': ['1', '2', '3'], // Manager has labs
-  '3': ['1'], // Staff has only Physics Lab
-};
+export const KAVYA_EMAIL_DOMAIN = '@kavyaschool.edu.np';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<Profile | null>(null);
   const [userAreas, setUserAreas] = useState<Area[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  // Fetch user profile and areas from database
+  const fetchUserData = async (authUser: User) => {
+    try {
+      console.log('Fetching user data for:', authUser.email);
+
+      // Fetch profile
+      let { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      if (profileError) {
+        if (profileError.code === 'PGRST116') {
+          // Profile missing, create it (Self-healing)
+          console.log('Profile missing, creating default profile...');
+          const newProfile = {
+            id: authUser.id,
+            email: authUser.email!,
+            name: authUser.user_metadata.name || authUser.email!.split('@')[0],
+            role: 'viewer' as UserRole, // Defaults to viewer
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert([newProfile] as any);
+
+          if (insertError) {
+            console.error('Error creating profile:', insertError);
+            toast({
+              title: "Profile Creation Failed",
+              description: "Could not create user profile. Please contact support.",
+              variant: "destructive"
+            });
+            // Don't set user if we failed to create a valid profile
+            // This prevents "Ghost Viewer" state
+            return;
+          }
+
+          setUser(newProfile as any);
+        } else {
+          console.error('Error fetching profile:', profileError);
+          toast({
+            title: "Database Error",
+            description: "Failed to load user profile. Please try again.",
+            variant: "destructive"
+          });
+        }
+      } else {
+        // Profile loaded successfully
+        console.log('Profile loaded:', profile);
+        setUser(profile as any);
+      }
+
+      // Fetch user areas if we have a user
+      const { data: userAreaData, error: areasError } = await supabase
+        .from('user_areas')
+        .select('area_id, areas(*)')
+        .eq('user_id', authUser.id);
+
+      if (areasError) {
+        console.error('Error fetching user areas:', areasError);
+      }
+
+      const areas = userAreaData
+        ?.map((ua: any) => ua.areas)
+        .filter((a): a is Area => a !== null) || [];
+      setUserAreas(areas);
+
+    } catch (error) {
+      console.error('Error in fetchUserData:', error);
+      toast({
+        title: "System Error",
+        description: "An unexpected error occurred while loading userdata.",
+        variant: "destructive"
+      });
+    }
+  };
 
   useEffect(() => {
-    // Check for existing session
-    const storedUser = localStorage.getItem('kavya_user');
-    if (storedUser) {
-      const parsed = JSON.parse(storedUser);
-      setUser(parsed);
-      const areaIds = DEMO_USER_AREAS[parsed.id] || [];
-      setUserAreas(DEMO_AREAS.filter(a => areaIds.includes(a.id)));
-    }
-    setIsLoading(false);
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        if (session?.user) {
+          await fetchUserData(session.user);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state change:', event, session?.user?.email);
+        setSession(session);
+
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setUserAreas([]);
+          setIsLoading(false);
+        } else if (session?.user) {
+          // If manually triggered by signIn, fetching might already happen
+          // But redundancy ensures consistency
+          if (event !== 'SIGNED_IN') {
+            // SIGNED_IN handled by signIn function for immediate feedback
+            // But for token refresh etc, we might want to refresh data?
+            // For now, minimal fetches to avoid loops
+          }
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
+    setIsLoading(true);
     const lowerEmail = email.toLowerCase();
-    
-    // Validate Kavya email domain
-    if (!lowerEmail.endsWith('@kavyaschool.edu.np')) {
+
+    if (!lowerEmail.endsWith(KAVYA_EMAIL_DOMAIN)) {
+      setIsLoading(false);
       return { error: 'Only @kavyaschool.edu.np email addresses are allowed' };
     }
 
-    const foundUser = DEMO_USERS.find(
-      u => u.email.toLowerCase() === lowerEmail && u.password === password
-    );
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: lowerEmail,
+        password,
+      });
 
-    if (!foundUser) {
-      return { error: 'Invalid email or password' };
+      if (error) {
+        setIsLoading(false);
+        return { error: error.message };
+      }
+
+      if (data.user) {
+        setSession(data.session);
+        // Await the fetch to ensure correct role is loaded before redirecting
+        await fetchUserData(data.user);
+      }
+
+      return { error: null };
+    } catch (err: any) {
+      console.error("Login exception:", err);
+      return { error: err.message || "An unexpected error occurred" };
+    } finally {
+      setIsLoading(false);
     }
-
-    if (!foundUser.is_active) {
-      return { error: 'Your account has been deactivated' };
-    }
-
-    const { password: _, ...userWithoutPassword } = foundUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem('kavya_user', JSON.stringify(userWithoutPassword));
-    
-    const areaIds = DEMO_USER_AREAS[foundUser.id] || [];
-    setUserAreas(DEMO_AREAS.filter(a => areaIds.includes(a.id)));
-
-    return { error: null };
   };
 
   const signUp = async (email: string, password: string, name: string): Promise<{ error: string | null }> => {
+    setIsLoading(true);
     const lowerEmail = email.toLowerCase();
-    
-    // Validate Kavya email domain
-    if (!lowerEmail.endsWith('@kavyaschool.edu.np')) {
+
+    if (!lowerEmail.endsWith(KAVYA_EMAIL_DOMAIN)) {
+      setIsLoading(false);
       return { error: 'Only @kavyaschool.edu.np email addresses are allowed' };
     }
 
-    // Check if user already exists
-    if (DEMO_USERS.some(u => u.email.toLowerCase() === lowerEmail)) {
-      return { error: 'An account with this email already exists' };
-    }
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: lowerEmail,
+        password,
+        options: {
+          data: { name: name },
+        },
+      });
 
-    // In demo mode, just return success message
-    return { error: 'Sign up successful! Please wait for admin approval to access the system.' };
+      if (error) {
+        return { error: error.message };
+      }
+
+      if (data.user) {
+        const { error: profileError } = await supabase.from('profiles').insert([{
+          id: data.user.id,
+          email: lowerEmail,
+          name: name,
+          role: 'viewer',
+          is_active: false,
+        }] as any);
+
+        if (profileError) console.error('Error creating profile:', profileError);
+      }
+
+      return { error: 'Sign up successful! Please wait for admin approval.' };
+    } catch (err: any) {
+      return { error: err.message };
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const signOut = async () => {
-    setUser(null);
-    setUserAreas([]);
-    localStorage.removeItem('kavya_user');
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setUser(null);
+      setUserAreas([]);
+      setSession(null);
+    }
   };
 
   const hasRole = (role: UserRole | UserRole[]): boolean => {
     if (!user) return false;
     if (user.role === 'admin') return true;
-    if (Array.isArray(role)) {
-      return role.includes(user.role);
-    }
+    if (Array.isArray(role)) return role.includes(user.role);
     return user.role === role;
   };
 
@@ -141,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userAreas, isLoading, signIn, signUp, signOut, hasRole, hasAreaAccess }}>
+    <AuthContext.Provider value={{ user, session, userAreas, isLoading, signIn, signUp, signOut, hasRole, hasAreaAccess }}>
       {children}
     </AuthContext.Provider>
   );

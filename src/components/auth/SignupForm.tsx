@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Eye, EyeOff, UserPlus, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { KAVYA_EMAIL_DOMAIN } from '@/types/auth';
+import { isValidKavyaEmail } from '@/types/auth'; // Updated import
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,8 +18,8 @@ const signupSchema = z.object({
     .min(1, 'Email is required')
     .email('Please enter a valid email')
     .refine(
-      (email) => email.toLowerCase().endsWith(KAVYA_EMAIL_DOMAIN),
-      `Only ${KAVYA_EMAIL_DOMAIN} emails are allowed`
+      (email) => isValidKavyaEmail(email),
+      'Only @kavyaschool.edu.np emails are allowed'
     ),
   password: z
     .string()
@@ -62,7 +62,7 @@ export function SignupForm() {
     try {
       const { error } = await signUp(data.email, data.password, data.name);
       if (error) {
-        // Check if it's a success message (demo mode)
+        // Check if it's a success message
         if (error.includes('successful')) {
           toast({
             title: 'Account Created',
@@ -110,7 +110,7 @@ export function SignupForm() {
         <Input
           id="email"
           type="email"
-          placeholder={`yourname${KAVYA_EMAIL_DOMAIN}`}
+          placeholder="yourname@kavyaschool.edu.np"
           {...register('email')}
           className={errors.email ? 'border-destructive' : ''}
           disabled={isLoading}
@@ -119,7 +119,7 @@ export function SignupForm() {
           <p className="text-sm text-destructive">{errors.email.message}</p>
         )}
         <p className="text-xs text-muted-foreground">
-          Only {KAVYA_EMAIL_DOMAIN} emails are allowed
+          Only @kavyaschool.edu.np emails are allowed
         </p>
       </div>
 
