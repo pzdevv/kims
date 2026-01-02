@@ -10,6 +10,14 @@ import LoginPage from "@/pages/auth/LoginPage";
 import SignupPage from "@/pages/auth/SignupPage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import InventoryListPage from "@/pages/inventory/InventoryListPage";
+import AddItemPage from "@/pages/inventory/AddItemPage";
+import CategoriesPage from "@/pages/categories/CategoriesPage";
+import AreasPage from "@/pages/areas/AreasPage";
+import TransactionsPage from "@/pages/transactions/TransactionsPage";
+import IssueItemPage from "@/pages/transactions/IssueItemPage";
+import ReportsPage from "@/pages/reports/ReportsPage";
+import UsersPage from "@/pages/users/UsersPage";
+import SettingsPage from "@/pages/settings/SettingsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,29 +30,22 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            {/* Auth Routes */}
             <Route path="/auth/login" element={<LoginPage />} />
             <Route path="/auth/signup" element={<SignupPage />} />
             
-            {/* Protected Routes */}
-            <Route
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout />
-                </ProtectedRoute>
-              }
-            >
+            <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/inventory" element={<InventoryListPage />} />
-              <Route path="/categories" element={<div className="p-4">Categories - Coming Soon</div>} />
-              <Route path="/areas" element={<div className="p-4">Areas - Coming Soon</div>} />
-              <Route path="/transactions" element={<div className="p-4">Transactions - Coming Soon</div>} />
-              <Route path="/reports" element={<div className="p-4">Reports - Coming Soon</div>} />
-              <Route path="/users" element={<div className="p-4">Users - Coming Soon</div>} />
-              <Route path="/settings" element={<div className="p-4">Settings - Coming Soon</div>} />
+              <Route path="/inventory/add" element={<AddItemPage />} />
+              <Route path="/categories" element={<CategoriesPage />} />
+              <Route path="/areas" element={<AreasPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/transactions/issue" element={<IssueItemPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
-            {/* Redirects */}
             <Route path="/" element={<Navigate to="/auth/login" replace />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
