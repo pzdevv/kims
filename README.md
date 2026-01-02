@@ -37,19 +37,13 @@ Academic Project
 ## 👨‍💻 Developers
 
 - **Itzbandhan**  
-  GitHub: https://github.com/itzbandhan *(replace with actual link)*
+  GitHub: https://github.com/itzbandhan
 
 - **Swoyam**  
-  GitHub: https://github.com/swoyam *(replace with actual link)*
+  GitHub: https://github.com/pzdevv 
 
 ---
 
-## 🔗 Project Repository
-
-GitHub Repository:  
-https://github.com/your-username/KIMS *(replace with actual repository link)*
-
----
 
 ## 🚀 Getting Started
 
