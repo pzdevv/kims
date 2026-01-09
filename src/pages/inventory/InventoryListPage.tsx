@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search,
   Plus,
-  Filter,
   Grid3X3,
   List,
   MoreHorizontal,
@@ -11,6 +10,8 @@ import {
   Edit,
   Eye,
   Trash2,
+  Loader2,
+  Upload,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,83 +31,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
-import { ItemStatus, ItemCondition } from '@/types/inventory';
-
-// Demo items data
-const demoItems = [
-  {
-    id: '1',
-    item_id: 'ITM-001',
-    name: 'HP ProBook 450 G8 Laptop',
-    category: { name: 'Electronics', color: '#76C044' },
-    area: { name: 'Computer Lab' },
-    quantity: 25,
-    status: 'available' as ItemStatus,
-    condition: 'good' as ItemCondition,
-    location: 'Rack A-1',
-    unit_price: 95000,
-  },
-  {
-    id: '2',
-    item_id: 'ITM-002',
-    name: 'Digital Microscope 1000x',
-    category: { name: 'Lab Equipment', color: '#3B82F6' },
-    area: { name: 'Biology Lab' },
-    quantity: 15,
-    status: 'available' as ItemStatus,
-    condition: 'new' as ItemCondition,
-    location: 'Cabinet B-3',
-    unit_price: 45000,
-  },
-  {
-    id: '3',
-    item_id: 'ITM-003',
-    name: 'Projector Epson EB-X51',
-    category: { name: 'Electronics', color: '#76C044' },
-    area: { name: 'Admin Office' },
-    quantity: 3,
-    status: 'checked_out' as ItemStatus,
-    condition: 'good' as ItemCondition,
-    location: 'Storage Room',
-    unit_price: 65000,
-  },
-  {
-    id: '4',
-    item_id: 'ITM-004',
-    name: 'Chemistry Lab Set (Advanced)',
-    category: { name: 'Lab Equipment', color: '#3B82F6' },
-    area: { name: 'Chemistry Lab' },
-    quantity: 8,
-    status: 'available' as ItemStatus,
-    condition: 'good' as ItemCondition,
-    location: 'Cabinet C-1',
-    unit_price: 35000,
-  },
-  {
-    id: '5',
-    item_id: 'ITM-005',
-    name: 'Office Chair (Ergonomic)',
-    category: { name: 'Furniture', color: '#8B5CF6' },
-    area: { name: 'Admin Office' },
-    quantity: 50,
-    status: 'available' as ItemStatus,
-    condition: 'good' as ItemCondition,
-    location: 'Multiple',
-    unit_price: 12000,
-  },
-  {
-    id: '6',
-    item_id: 'ITM-006',
-    name: 'Basketball (Official Size)',
-    category: { name: 'Sports Equipment', color: '#F59E0B' },
-    area: { name: 'Sports Room' },
-    quantity: 4,
-    status: 'maintenance' as ItemStatus,
-    condition: 'fair' as ItemCondition,
-    location: 'Sports Cabinet',
-    unit_price: 3500,
-  },
-];
+import { useInventory, InventoryItemWithRelations } from '@/hooks/useInventory';
+import { CSVImportDialog } from '@/components/CSVImportDialog';
+import type { ItemStatus, ItemCondition } from '@/types/database';
 
 const statusColors: Record<ItemStatus, string> = {
   available: 'bg-success text-success-foreground',
@@ -127,16 +54,24 @@ export default function InventoryListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const { hasRole, userAreas } = useAuth();
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const { hasRole } = useAuth();
 
-  const filteredItems = demoItems.filter((item) => {
+  const { items, categories, loading, fetchItems, fetchCategories, deleteItem } = useInventory();
+
+  useEffect(() => {
+    fetchItems();
+    fetchCategories();
+  }, [fetchItems, fetchCategories]);
+
+  // Apply client-side filters
+  const filteredItems = items.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.item_id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || item.category.name === categoryFilter;
+      (item.serial_number?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+    const matchesCategory = categoryFilter === 'all' || item.category?.name === categoryFilter;
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-    const matchesArea = userAreas.length === 8 || userAreas.some((a) => a.name === item.area.name);
-    return matchesSearch && matchesCategory && matchesStatus && matchesArea;
+    return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const getQuantityColor = (quantity: number) => {
@@ -145,23 +80,54 @@ export default function InventoryListPage() {
     return 'text-destructive';
   };
 
+  const handleDelete = async (id: string) => {
+    if (confirm('Are you sure you want to delete this item?')) {
+      await deleteItem(id);
+    }
+  };
+
+  if (loading && items.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading inventory...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* CSV Import Dialog */}
+      <CSVImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        type="inventory"
+        onImportComplete={fetchItems}
+      />
+
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Inventory</h1>
+          <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">Inventory</h1>
           <p className="text-muted-foreground">
-            {filteredItems.length} items found
+            {loading ? 'Loading...' : `${filteredItems.length} items found`}
           </p>
         </div>
-        {hasRole(['admin', 'manager']) && (
-          <Button asChild>
-            <Link to="/inventory/add">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Item
-            </Link>
-          </Button>
+        {hasRole(['admin', 'general_manager', 'manager']) && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import CSV
+            </Button>
+            <Button asChild>
+              <Link to="/inventory/add">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Item
+              </Link>
+            </Button>
+          </div>
         )}
       </div>
 
@@ -173,7 +139,7 @@ export default function InventoryListPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name or ID..."
+                placeholder="Search by name or serial number..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -187,10 +153,9 @@ export default function InventoryListPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Electronics">Electronics</SelectItem>
-                <SelectItem value="Lab Equipment">Lab Equipment</SelectItem>
-                <SelectItem value="Furniture">Furniture</SelectItem>
-                <SelectItem value="Sports Equipment">Sports Equipment</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -232,18 +197,26 @@ export default function InventoryListPage() {
       {/* Items Grid/List */}
       {viewMode === 'grid' ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredItems.map((item) => (
-            <Card key={item.id} className="hover:shadow-md transition-shadow">
+          {filteredItems.map((item, index) => (
+            <Card
+              key={item.id}
+              className="hover:shadow-premium-lg transition-all duration-300 animate-fade-in opacity-0"
+              style={{ animationDelay: `${Math.min(index * 50, 400)}ms` }}
+            >
               <CardContent className="p-4">
-                {/* Image placeholder */}
-                <div className="aspect-video bg-muted rounded-lg mb-4 flex items-center justify-center">
-                  <Package className="h-12 w-12 text-muted-foreground" />
+                {/* Image */}
+                <div className="aspect-video bg-muted rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <Package className="h-12 w-12 text-muted-foreground" />
+                  )}
                 </div>
 
                 {/* Header */}
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="text-xs text-muted-foreground">{item.item_id}</p>
+                    <p className="text-xs text-muted-foreground">{item.serial_number || 'No S/N'}</p>
                     <h3 className="font-semibold text-foreground line-clamp-1">{item.name}</h3>
                   </div>
                   <DropdownMenu>
@@ -253,17 +226,24 @@ export default function InventoryListPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
-                        <Eye className="mr-2 h-4 w-4" />
-                        View Details
+                      <DropdownMenuItem asChild>
+                        <Link to={`/inventory/${item.id}`}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Details
+                        </Link>
                       </DropdownMenuItem>
-                      {hasRole(['admin', 'manager']) && (
+                      {hasRole(['admin', 'general_manager', 'manager']) && (
                         <>
-                          <DropdownMenuItem>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit
+                          <DropdownMenuItem asChild>
+                            <Link to={`/inventory/${item.id}/edit`}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </Link>
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDelete(item.id)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
@@ -275,14 +255,16 @@ export default function InventoryListPage() {
 
                 {/* Badges */}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  <Badge
-                    variant="outline"
-                    style={{ borderColor: item.category.color, color: item.category.color }}
-                  >
-                    {item.category.name}
-                  </Badge>
-                  <Badge className={statusColors[item.status]}>
-                    {statusLabels[item.status]}
+                  {item.category && (
+                    <Badge
+                      variant="outline"
+                      style={{ borderColor: item.category.color || '#76C044', color: item.category.color || '#76C044' }}
+                    >
+                      {item.category.name}
+                    </Badge>
+                  )}
+                  <Badge className={statusColors[item.status as ItemStatus] || 'bg-muted'}>
+                    {statusLabels[item.status as ItemStatus] || item.status}
                   </Badge>
                 </div>
 
@@ -290,7 +272,7 @@ export default function InventoryListPage() {
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Area:</span>
-                    <span>{item.area.name}</span>
+                    <span>{item.area?.name || 'Unassigned'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Quantity:</span>
@@ -298,10 +280,12 @@ export default function InventoryListPage() {
                       {item.quantity}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Location:</span>
-                    <span>{item.location}</span>
-                  </div>
+                  {item.location && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Location:</span>
+                      <span>{item.location}</span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -327,36 +311,42 @@ export default function InventoryListPage() {
                     <td className="p-4">
                       <div>
                         <p className="font-medium">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">{item.item_id}</p>
+                        <p className="text-xs text-muted-foreground">{item.serial_number || 'No S/N'}</p>
                       </div>
                     </td>
                     <td className="p-4">
-                      <Badge
-                        variant="outline"
-                        style={{ borderColor: item.category.color, color: item.category.color }}
-                      >
-                        {item.category.name}
-                      </Badge>
+                      {item.category && (
+                        <Badge
+                          variant="outline"
+                          style={{ borderColor: item.category.color || '#76C044', color: item.category.color || '#76C044' }}
+                        >
+                          {item.category.name}
+                        </Badge>
+                      )}
                     </td>
-                    <td className="p-4 text-muted-foreground">{item.area.name}</td>
+                    <td className="p-4 text-muted-foreground">{item.area?.name || 'Unassigned'}</td>
                     <td className="p-4">
                       <span className={`font-medium ${getQuantityColor(item.quantity)}`}>
                         {item.quantity}
                       </span>
                     </td>
                     <td className="p-4">
-                      <Badge className={statusColors[item.status]}>
-                        {statusLabels[item.status]}
+                      <Badge className={statusColors[item.status as ItemStatus] || 'bg-muted'}>
+                        {statusLabels[item.status as ItemStatus] || item.status}
                       </Badge>
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon">
-                          <Eye className="h-4 w-4" />
+                        <Button variant="ghost" size="icon" asChild>
+                          <Link to={`/inventory/${item.id}`}>
+                            <Eye className="h-4 w-4" />
+                          </Link>
                         </Button>
-                        {hasRole(['admin', 'manager']) && (
-                          <Button variant="ghost" size="icon">
-                            <Edit className="h-4 w-4" />
+                        {hasRole(['admin', 'general_manager', 'manager']) && (
+                          <Button variant="ghost" size="icon" asChild>
+                            <Link to={`/inventory/${item.id}/edit`}>
+                              <Edit className="h-4 w-4" />
+                            </Link>
                           </Button>
                         )}
                       </div>
@@ -369,14 +359,18 @@ export default function InventoryListPage() {
         </Card>
       )}
 
-      {filteredItems.length === 0 && (
-        <Card className="p-12 text-center">
-          <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+      {filteredItems.length === 0 && !loading && (
+        <Card className="p-12 text-center animate-fade-in">
+          <div className="p-4 bg-muted/50 rounded-full w-fit mx-auto mb-4">
+            <Package className="h-12 w-12 text-muted-foreground" />
+          </div>
           <h3 className="text-lg font-semibold mb-2">No items found</h3>
           <p className="text-muted-foreground mb-4">
-            Try adjusting your search or filters
+            {searchQuery || categoryFilter !== 'all' || statusFilter !== 'all'
+              ? 'Try adjusting your search or filters'
+              : 'Add your first inventory item to get started'}
           </p>
-          {hasRole(['admin', 'manager']) && (
+          {hasRole(['admin', 'general_manager', 'manager']) && (
             <Button asChild>
               <Link to="/inventory/add">
                 <Plus className="mr-2 h-4 w-4" />

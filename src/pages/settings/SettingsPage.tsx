@@ -1,23 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  Building,
   User,
-  Bell,
   Shield,
-  Palette,
   Save,
   Loader2,
-  Upload,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import {
   Tabs,
   TabsContent,
@@ -26,17 +20,15 @@ import {
 } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import kavyaLogo from '@/assets/kavya-logo.svg';
+import { supabase } from '@/lib/supabase';
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email'),
   phone: z.string().optional(),
   department: z.string().optional(),
 });
 
 const passwordSchema = z.object({
-  currentPassword: z.string().min(1, 'Current password is required'),
   newPassword: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
 }).refine(data => data.newPassword === data.confirmPassword, {
@@ -46,44 +38,71 @@ const passwordSchema = z.object({
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
-
-  // System settings state
-  const [settings, setSettings] = useState({
-    schoolName: 'Kavya School',
-    schoolAddress: 'Kathmandu, Nepal',
-    lowStockThreshold: 10,
-    autoGenerateIds: true,
-    emailNotifications: true,
-    lowStockAlerts: true,
-    overdueAlerts: true,
-  });
 
   const profileForm = useForm({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: user?.name || '',
-      email: user?.email || '',
+      name: '',
       phone: '',
-      department: user?.department || '',
+      department: '',
     },
   });
 
   const passwordForm = useForm({
     resolver: zodResolver(passwordSchema),
     defaultValues: {
-      currentPassword: '',
       newPassword: '',
       confirmPassword: '',
     },
   });
 
+  // Load user data into form when user changes
+  useEffect(() => {
+    if (user) {
+      profileForm.reset({
+        name: user.name || '',
+        phone: user.phone || '',
+        department: user.department || '',
+      });
+    }
+  }, [user, profileForm]);
+
   const handleProfileSave = async (data: z.infer<typeof profileSchema>) => {
+    if (!user) return;
+
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: data.name,
+          phone: data.phone || null,
+          department: data.department || null,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      // Also update auth user metadata
+      await supabase.auth.updateUser({
+        data: { name: data.name }
+      });
+
       toast({ title: 'Profile Updated', description: 'Your profile has been saved.' });
+
+      // Refresh user data in context
+      if (refreshUser) {
+        await refreshUser();
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update profile',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -92,19 +111,20 @@ export default function SettingsPage() {
   const handlePasswordChange = async (data: z.infer<typeof passwordSchema>) => {
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const { error } = await supabase.auth.updateUser({
+        password: data.newPassword,
+      });
+
+      if (error) throw error;
+
       toast({ title: 'Password Changed', description: 'Your password has been updated.' });
       passwordForm.reset();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSystemSave = async () => {
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast({ title: 'Settings Saved', description: 'System settings have been updated.' });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to change password',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -114,35 +134,32 @@ export default function SettingsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Manage your account and system preferences</p>
+        <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">Settings</h1>
+        <p className="text-muted-foreground">Manage your account preferences</p>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="profile" className="gap-2">
+        <TabsList className="bg-muted/50 p-1">
+          <TabsTrigger value="profile" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <User className="h-4 w-4" />
             Profile
           </TabsTrigger>
-          <TabsTrigger value="system" className="gap-2">
-            <Building className="h-4 w-4" />
-            System
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-2">
-            <Bell className="h-4 w-4" />
-            Notifications
-          </TabsTrigger>
-          <TabsTrigger value="security" className="gap-2">
+          <TabsTrigger value="security" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
             <Shield className="h-4 w-4" />
             Security
           </TabsTrigger>
         </TabsList>
 
         {/* Profile Tab */}
-        <TabsContent value="profile">
-          <Card>
+        <TabsContent value="profile" className="animate-fade-in">
+          <Card glass>
             <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-1.5 bg-primary/10 rounded-lg">
+                  <User className="h-4 w-4 text-primary" />
+                </div>
+                Profile Information
+              </CardTitle>
               <CardDescription>Update your personal details</CardDescription>
             </CardHeader>
             <CardContent>
@@ -165,9 +182,11 @@ export default function SettingsPage() {
                     <Input
                       id="email"
                       type="email"
-                      {...profileForm.register('email')}
+                      value={user?.email || ''}
                       disabled
+                      className="bg-muted"
                     />
+                    <p className="text-xs text-muted-foreground">Email cannot be changed</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone</Label>
@@ -182,9 +201,22 @@ export default function SettingsPage() {
                     <Input
                       id="department"
                       {...profileForm.register('department')}
+                      placeholder="e.g., Administration"
                     />
                   </div>
                 </div>
+
+                {/* Role Display */}
+                <div className="space-y-2">
+                  <Label>Role</Label>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex px-3 py-1 rounded-full text-sm font-medium bg-primary/10 text-primary capitalize">
+                      {user?.role?.replace('_', ' ') || 'Manager'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">Contact admin to change role</span>
+                  </div>
+                </div>
+
                 <div className="flex justify-end">
                   <Button type="submit" disabled={isLoading}>
                     {isLoading ? (
@@ -200,183 +232,27 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* System Tab */}
-        <TabsContent value="system">
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>School Information</CardTitle>
-                <CardDescription>Configure school details</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-20 w-20 rounded-lg border-2 border-dashed border-muted-foreground/25 flex items-center justify-center">
-                    <img src={kavyaLogo} alt="School Logo" className="h-16" />
-                  </div>
-                  <div>
-                    <Button variant="outline" size="sm">
-                      <Upload className="mr-2 h-4 w-4" />
-                      Change Logo
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-1">PNG, JPG up to 2MB</p>
-                  </div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>School Name</Label>
-                    <Input
-                      value={settings.schoolName}
-                      onChange={(e) => setSettings({ ...settings, schoolName: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Address</Label>
-                    <Input
-                      value={settings.schoolAddress}
-                      onChange={(e) => setSettings({ ...settings, schoolAddress: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Inventory Settings</CardTitle>
-                <CardDescription>Configure inventory behavior</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Low Stock Threshold</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={settings.lowStockThreshold}
-                    onChange={(e) => setSettings({ ...settings, lowStockThreshold: parseInt(e.target.value) })}
-                    className="w-32"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Items below this quantity will trigger low stock alerts
-                  </p>
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Auto-generate Item IDs</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Automatically generate unique IDs for new items
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.autoGenerateIds}
-                    onCheckedChange={(checked) => setSettings({ ...settings, autoGenerateIds: checked })}
-                  />
-                </div>
-
-                <div className="flex justify-end">
-                  <Button onClick={handleSystemSave} disabled={isLoading}>
-                    {isLoading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Save Settings
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* Notifications Tab */}
-        <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>Choose what notifications you receive</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Email Notifications</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Receive notifications via email
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.emailNotifications}
-                  onCheckedChange={(checked) => setSettings({ ...settings, emailNotifications: checked })}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Low Stock Alerts</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Get notified when items are running low
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.lowStockAlerts}
-                  onCheckedChange={(checked) => setSettings({ ...settings, lowStockAlerts: checked })}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Overdue Return Alerts</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Get notified about overdue items
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.overdueAlerts}
-                  onCheckedChange={(checked) => setSettings({ ...settings, overdueAlerts: checked })}
-                />
-              </div>
-
-              <div className="flex justify-end">
-                <Button onClick={handleSystemSave} disabled={isLoading}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Preferences
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         {/* Security Tab */}
-        <TabsContent value="security">
-          <Card>
+        <TabsContent value="security" className="animate-fade-in">
+          <Card glass>
             <CardHeader>
-              <CardTitle>Change Password</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-1.5 bg-amber-500/10 rounded-lg">
+                  <Shield className="h-4 w-4 text-amber-500" />
+                </div>
+                Change Password
+              </CardTitle>
               <CardDescription>Update your account password</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={passwordForm.handleSubmit(handlePasswordChange)} className="space-y-4 max-w-md">
-                <div className="space-y-2">
-                  <Label htmlFor="currentPassword">Current Password</Label>
-                  <Input
-                    id="currentPassword"
-                    type="password"
-                    {...passwordForm.register('currentPassword')}
-                  />
-                  {passwordForm.formState.errors.currentPassword && (
-                    <p className="text-sm text-destructive">
-                      {passwordForm.formState.errors.currentPassword.message}
-                    </p>
-                  )}
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="newPassword">New Password</Label>
                   <Input
                     id="newPassword"
                     type="password"
                     {...passwordForm.register('newPassword')}
+                    placeholder="Enter new password"
                   />
                   {passwordForm.formState.errors.newPassword && (
                     <p className="text-sm text-destructive">
@@ -390,6 +266,7 @@ export default function SettingsPage() {
                     id="confirmPassword"
                     type="password"
                     {...passwordForm.register('confirmPassword')}
+                    placeholder="Confirm new password"
                   />
                   {passwordForm.formState.errors.confirmPassword && (
                     <p className="text-sm text-destructive">
@@ -406,6 +283,44 @@ export default function SettingsPage() {
                   Update Password
                 </Button>
               </form>
+            </CardContent>
+          </Card>
+
+          {/* Account Info */}
+          <Card glass className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+                  <Shield className="h-4 w-4 text-emerald-500" />
+                </div>
+                Account Information
+              </CardTitle>
+              <CardDescription>Your account details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <Label className="text-muted-foreground">Account Created</Label>
+                  <p className="font-medium">
+                    {user?.created_at
+                      ? new Date(user.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Account Status</Label>
+                  <p className="font-medium">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs ${user?.is_active !== false ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'
+                      }`}>
+                      {user?.is_active !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

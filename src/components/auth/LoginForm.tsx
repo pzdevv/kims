@@ -91,12 +91,7 @@ export function LoginForm() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="password">Password</Label>
-          <Link
-            to="/forgot-password"
-            className="text-sm text-primary hover:underline"
-          >
-            Forgot password?
-          </Link>
+
         </div>
         <div className="relative">
           <Input
@@ -120,16 +115,24 @@ export function LoginForm() {
         )}
       </div>
 
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id="rememberMe"
-          checked={watch('rememberMe')}
-          onCheckedChange={(checked) => setValue('rememberMe', checked as boolean)}
-          disabled={isLoading}
-        />
-        <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
-          Remember me
-        </Label>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="rememberMe"
+            checked={watch('rememberMe')}
+            onCheckedChange={(checked) => setValue('rememberMe', checked as boolean)}
+            disabled={isLoading}
+          />
+          <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
+            Remember me
+          </Label>
+        </div>
+        <Link
+          to="/auth/forgot-password"
+          className="text-sm text-primary hover:text-primary/80 transition-colors"
+        >
+          Forgot password?
+        </Link>
       </div>
 
       <Button type="submit" className="w-full" disabled={isLoading}>

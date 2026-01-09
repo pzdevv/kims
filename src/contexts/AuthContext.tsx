@@ -14,6 +14,7 @@ export interface AuthContextType {
   signOut: () => Promise<void>;
   hasRole: (role: UserRole | UserRole[]) => boolean;
   hasAreaAccess: (areaId: string) => boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,7 +31,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Fetch user profile and areas from database
   const fetchUserData = async (authUser: User) => {
     try {
-      console.log('Fetching user data for:', authUser.email);
 
       // Fetch profile
       let { data: profile, error: profileError } = await supabase
@@ -42,12 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profileError) {
         if (profileError.code === 'PGRST116') {
           // Profile missing, create it (Self-healing)
-          console.log('Profile missing, creating default profile...');
           const newProfile = {
             id: authUser.id,
             email: authUser.email!,
             name: authUser.user_metadata.name || authUser.email!.split('@')[0],
-            role: 'viewer' as UserRole, // Defaults to viewer
+            role: 'manager' as UserRole, // Defaults to manager
             is_active: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -80,7 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else {
         // Profile loaded successfully
-        console.log('Profile loaded:', profile);
         setUser(profile as any);
       }
 
@@ -128,7 +126,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state change:', event, session?.user?.email);
         setSession(session);
 
         if (event === 'SIGNED_OUT') {
@@ -250,8 +247,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return userAreas.some(a => a.id === areaId);
   };
 
+  const refreshUser = async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) {
+      await fetchUserData(authUser);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, userAreas, isLoading, signIn, signUp, signOut, hasRole, hasAreaAccess }}>
+    <AuthContext.Provider value={{ user, session, userAreas, isLoading, signIn, signUp, signOut, hasRole, hasAreaAccess, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
